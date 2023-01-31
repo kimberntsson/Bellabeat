@@ -1,0 +1,389 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This is a case study project of the Google Data Analytics Professional Certificate.
+We will do the analysis of this case study with the following process: **ask, prepare, process, analyze, share and act**.
+
+## 1. Introduction
+
+![bike share](https://www.moneycrashers.com/wp-content/uploads/2018/12/bike-sharing-disadvantages-810x455.jpg)
+
+Cyclistic is a bike-sharing company with a fleet of 5,824 bicycles of various sorts.
+Geotracked with a network of 692 stations around the Chicago area.
+The bikes can be unlocked at one station locked at another in the bike-share network.
+We have been tasked to analyze the company's data on these bicycles in order to **convert** more casual riders to annual members and give our **top three recommendations** based on this analysis.
+These recommendations can then guide the marketing team towards more successful marketing campaigns.
+
+## 2. Ask
+
+#### 2.1 The business task
+
+Design marketing strategies aimed at converting casual riders into annual members.
+Cyclistic categorizes their customers into two groups.
+Customers with annual memberships are called Cyclistic members and single-ride or full-day pass customers are refereed to as casual riders.
+
+#### 2.2 Main questions for this analysis
+
+1.  How do annual members and casual riders use Cyclistic bikes differently?
+2.  Why would casual riders buy Cyclistic annual memberships?
+3.  How can Cyclistic use digital media to influence casual riders to become members?
+
+**Stakeholders**
+
+Main stakeholder: **Cyclistic executive team**.
+
+Secondary stakeholders: **Lily Moreno** and **Cyclistic marketing analytics team**
+
+## 3. Prepare
+
+#### 3.1 Data source
+
+We will be using twelve months of bike-share data.
+We have a license made available by Motivate International Inc.
+These data-sets include information about start and end times of trips, station start and stops and a lot more.
+We do not get any personal data.
+That means we can not connect past purchases to any credit card numbers in order to determine if casual riders live in the Cyclistic service area or if they have purchased multiple single passes.
+
+#### 3.2 Meta-data
+
+To further understand the metadata, here is a few bullet points to consider when exploring the data-sets: \* Trips that did not include a start or end date are excluded \* Trips greater than 24 hours in duration are excluded
+
+#### 3.3 Validate the data
+
+I used the **ROCCC** method to determine if the data is actually sufficient for this analysis.
+Is the data: -
+
+-   **Reliable**: Yes.
+    Sample size is big, data over a long period of time and from a trusted source.
+
+-   **Original** : Yes, It's original.
+
+-   **Comprehensive**: The data seems to have everything that is needed for analysis and make good recommendations.
+
+-   **Current**: I chose data from 2017 for this case study although there are data from this year.
+    I just chose a calander year by random since this is a fictitious company.
+
+-   **Cited**: Yes, the data is vetted by Motivate International Inc. and is under this [license](https://ride.divvybikes.com/data-license-agreement).
+
+## 4. Process
+
+For demonstrative purposes I will be performing parts of my work with **SQL queries from within R**.
+This is to showcase skills we have learned SQL during the Google Data Analyst course.
+
+#### 4.1 Preparing tools for managing and analyzing
+
+```{r install, eval=FALSE, include=FALSE}
+install.packages("ggplot2")
+install.packages("dplyr")
+install.packages("readr")
+install.packages("janitor")
+install.packages("lubridate")
+install.packages("skimr")
+install.packages("DBI")
+install.packages("odbc")
+install.packages("sqldf")
+install.packages("tidyverse")
+```
+
+```{r loading packages, message=FALSE, warning=FALSE}
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(janitor)
+library(lubridate)
+library(skimr)
+library(DBI)
+library(odbc)
+library(sqldf)
+library(tidyverse)
+```
+
+#### 4.2 Loading datasets
+
+```{r loading data frames, message=FALSE, warning=FALSE}
+jan <- read.csv("../input/cyclistic-2021-datasets/202101-divvy-tripdata.csv")
+feb <- read.csv("../input/cyclistic-2021-datasets/202102-divvy-tripdata.csv")
+mar <- read.csv("../input/cyclistic-2021-datasets/202103-divvy-tripdata.csv")
+apr <- read.csv("../input/cyclistic-2021-datasets/202104-divvy-tripdata.csv")
+may <- read.csv("../input/cyclistic-2021-datasets/202105-divvy-tripdata.csv")
+jun <- read.csv("../input/cyclistic-2021-datasets/202106-divvy-tripdata.csv")
+jul <- read.csv("../input/cyclistic-2021-datasets/202107-divvy-tripdata.csv")
+aug <- read.csv("../input/cyclistic-2021-datasets/202108-divvy-tripdata.csv")
+sep <- read.csv("../input/cyclistic-2021-datasets/202109-divvy-tripdata.csv")
+oct <- read.csv("../input/cyclistic-2021-datasets/202110-divvy-tripdata.csv")
+nov <- read.csv("../input/cyclistic-2021-datasets/202111-divvy-tripdata.csv")
+dec <- read.csv("../input/cyclistic-2021-datasets/202112-divvy-tripdata.csv")
+```
+
+#### 4.3 Getting familiar with the relevant data
+
+So I begin by skimming through the data to see if I can merge them together for ease of use.
+
+```{r}
+sqldf("SELECT *
+
+FROM jan
+
+LIMIT 5
+")
+```
+
+```{r echo = T, results = 'hide'}
+sqldf("SELECT *
+
+FROM feb
+
+LIMIT 5
+")
+```
+
+```{r echo = T, results = 'hide'}
+sqldf("SELECT *
+
+FROM mar
+
+LIMIT 5
+")
+```
+
+```{r }
+sqldf("SELECT *
+
+FROM dec
+
+LIMIT 5
+")
+```
+
+They have the same structure.
+I choose to merge the twelve trips tables together.
+
+```{r}
+trips_merged <- bind_rows(jan,feb,mar,apr,may,jun,jul,aug,sep,oct,nov,dec)
+```
+
+Lets check the different types of bikes we can find in the dataset.
+
+```{r}
+sqldf("
+SELECT COUNT(DISTINCT rideable_type)
+FROM trips_merged
+   
+")
+```
+
+```{r}
+sqldf("
+SELECT DISTINCT(rideable_type)
+
+FROM trips_merged
+
+  
+LIMIT 10
+")
+```
+
+What we can see from this query is that there are bikes labeled as "docked_bike".
+If they appear on trips we might need to check why they are labeled as docked.
+
+#### 4.4 Cleaning and transforming the data
+
+**Duplicates**
+
+Lets see if we have duplicate ride_id instances.
+If we do we need to remove them since they are our primary key.
+
+```{r}
+sqldf("
+SELECT *, COUNT(*)
+
+FROM trips_merged
+
+GROUP BY
+  ride_id
+HAVING COUNT(*) > 1
+
+")
+```
+
+No duplicates but below code chunk can come in handy in situations where duplicates are found.
+
+trips_merged \<- sqldf(" SELECT DISTINCT \*
+
+FROM trips_merged ")
+
+**NULLS**
+
+Lets use skim to get more familiar with the dataset.
+
+```{r}
+skim_without_charts(trips_merged)
+```
+
+We can see that there are a lot of empty cells that needs to be addressed before we can analyze.
+
+```{r}
+trips_merged <- trips_merged %>% 
+  na_if("") %>% 
+  na.omit
+```
+
+**Data validation**
+
+The time stamps in the data set are displayed as characters when we skim the data-set.
+We need to address this so we can pick the trips apart and analyze them further later.
+
+```{r}
+trips_merged$started_at <- as.POSIXct(trips_merged$started_at, "%Y-%m-%d %H:%M:%S" , tz="CST")
+trips_merged$ended_at <- as.POSIXct(trips_merged$ended_at, "%Y-%m-%d %H:%M:%S", tz="CST")
+```
+
+I will check the columns for discrepancies and outliers.
+And make sure that we have the correct data in each column.
+In the metadata information we can find that trip duration's larger than 24 hours and less than one minute are excluded already.
+
+```{r}
+skim(trips_merged)
+```
+
+## 5. Analyze
+
+Our data is now transformed and ready for further analysis.
+The tools and practices I've used in my analysis include merging tables, calculating means and sums, relational bar-charts among others.
+
+#### 5.1 Customers vs subscribers
+
+Our business task is to provide marketing strategy recommendations towards converting non-subscribers to annual members.
+Lets explore some behavior differences between the two.
+
+Here is what we have to work with in terms of regular customers to convert to already existing subscribers.
+
+```{r}
+trips_merged %>% 
+  group_by(member_casual)%>%
+  summarize(count = length(ride_id)/1000000) %>%
+  mutate(pct = round(count*100/sum(count),2)) %>%
+  
+  ggplot(aes(x = "", y = count, fill = member_casual)) + 
+  geom_bar(width = 1, stat = "identity", color = "white", show.legend = FALSE) + 
+  coord_polar("y", start = 0) + 
+  geom_text(aes(label = paste(member_casual, paste(pct, "%"), sep = "\n")), 
+            position = position_stack(vjust = 0.5), color = "white") + 
+  labs(title = "Customers vs annual subscribers") + 
+  theme_void() +
+  scale_fill_brewer(palette="Set1")
+```
+
+Also I wanted to calculate the duration of the trips each ride have.
+So I create a new column and calculate the mean between subscribers and customers.
+There are rides with negative values which needed to be addressed too before analyzing.
+
+```{r}
+trips_merged <- mutate(trips_merged, tripduration = round(difftime(ended_at, started_at, units="mins"), 0))
+```
+
+```{r}
+trips_merged <- filter(trips_merged, tripduration > 0)
+```
+
+```{r message=FALSE, warning=FALSE}
+usertype_distance_mean <- trips_merged %>% 
+  group_by(member_casual) %>% 
+  summarise(mean_time = mean(tripduration))
+
+ggplot(usertype_distance_mean) + 
+  geom_col(mapping=aes(x=member_casual,y=mean_time,fill=member_casual), show.legend = FALSE)+
+  labs(title = "Mean trip duration",x="User Type",y="Mean time in minutes")+
+  scale_fill_brewer(palette="Set1")
+```
+
+#### 5.2 Commuting hours
+
+If we could explore visually when the two customer groups travels during the week and which hours, we could get some insights to at what hours and what days we should recommend ads being pushed towards customers.
+
+To do that we first need to create some new columns for days of the week, hours, month and year.
+
+```{r}
+trips_merged$year <- format(trips_merged$started_at,"%Y")
+trips_merged$month <- format(as.Date(trips_merged$started_at),"%B")
+trips_merged$weekday <- strftime(trips_merged$started_at, "%A")
+trips_merged$hour <- as.numeric(format(as.POSIXct(trips_merged$started_at), format = "%H"))
+```
+
+```{r message=FALSE, warning=FALSE}
+trips_merged %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(tripduration),.groups = 'drop') %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  scale_fill_brewer(palette="Set1") +
+  labs(title = "Rides per weekday",x="Weekday",y="Number of rides", fill="User type") +
+  theme(legend.position="top")
+```
+
+Here we can see clearly that the weekend is a winner for the more casual riders, while the subscribers peak in the middle of the week.
+
+```{r message=FALSE, warning=FALSE}
+trips_merged %>%
+    group_by(member_casual, hour) %>%
+    summarize(mean_length = round(mean(tripduration)), count = n()) %>%
+    ggplot(aes(x = hour, y = count, group = member_casual, color = member_casual)) + geom_line() + 
+  geom_point() +
+  scale_colour_manual(
+    values = c("member" = "blue", "casual" = "red"))
+```
+
+And with the hourly data we can see a clear correlation at around 7AM to 7PM between commuters and casual riders.
+
+#### 5.3 User activity by month
+
+Here we explore the relationship between the users per month.
+We can spot a clear trend peak during the summer months June to September.
+
+```{r}
+ggplot(trips_merged)+
+  geom_bar(aes(x= month, fill= member_casual),position = "dodge")+
+labs(title = "Member vs casual per month")+
+  theme(axis.text.x = element_text(angle = 50,hjust = 1))+scale_x_discrete(limit = month.name) +
+  scale_fill_brewer(palette="Set1")
+```
+
+## 6. Act
+
+#### 6.1 Business questions
+
+1.  How do annual members and casual riders use Cyclistic bikes differently?
+
+    The casual users use the bikes for more than double the amount of time on average.
+    And they use them a lot more during the weekend.
+    My guess is that the casual riders use them for sightseeing around Chicago.
+
+2.  Why would casual riders buy Cyclistic annual memberships?
+
+    The users that use the bikes for commute should get an annual membership to save money on their commuting cost.
+
+3.  How can Cyclistic use digital media to influence casual riders to become members?
+
+    By leveraging at what hours and what months a new potential subscriber starts to use Cyclistics bikes.
+    Above plots shows clear trends on **when** to use the company's different marketing strategies and to maximize that a potential casual user converts to an annual one.
+
+#### 6.2 Recommendations
+
+My top three recommendations for Clyclistic marketing team to convert casual customers to annual subscribers.
+
+-   Marketeting should focus their campaigns that are aimed to convert casual customers to annual subscribers on **mondays to thursdays**.
+    The data shows that there is higher probability that the campaign would hit a commuter that would benefit from having an annual subscription.
+
+-   We can se a strong trend during the summer months of June to September upwords for the casual rider.
+    Therefore I recommend campaigns to be more prevelant during non-summer months from Oktober to May.
+    In order to maximize the probability of hitting a possible commuter for turnover.
+
+-   Marketing should also be aimed at around 7.00 AM to 7.00 PM time of day for best accuracy to convert a casual rider.
+
+-   **Bonus recommendation** Marketing inside the app should be done to users with lower trip duration.
+    In my analysis I found that casual user had on average almost double the time spent on the bike.
